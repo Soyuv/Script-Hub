@@ -1,172 +1,75 @@
--- Ultimate Client-Sided Admin Panel + Advanced Anti-Cheat Bypass (Full, Combined, and Robust)
--- Key: "Test"
--- This script is for educational, testing, or exploit scenarios only.
+-- KRNL/Delta Compatible Client Admin Panel + Stealth Anti-Cheat Bypass
+-- Key: "Key"
 
--- =========================
--- ======= SERVICES ========
--- =========================
+-- SERVICES
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local StarterGui = game:GetService("StarterGui")
 local VirtualUser = game:GetService("VirtualUser")
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local Camera = Workspace.CurrentCamera
 
--- =========================
--- ====== BYPASS CODE ======
--- =========================
+-- ===========================
+--      BASIC ANTI-CHEAT BYPASS
+-- ===========================
 
--- Utility: Suspicious script check (centralized)
-local function is_suspicious_script()
-    local sn = tostring(getcallingscript())
-    return sn:find("?") or sn:lower():find("anti") or sn:lower():find("cheat")
-end
-
--- Decoy/Junk code for bloat, "performance" and analytics stubs
-local _scriptUptime = 0
-task.spawn(function()
-    while true do
-        _scriptUptime = _scriptUptime + 1
-        task.wait(1)
-    end
-end)
-
-local fpsLog = {}
-task.spawn(function()
-    while true do
-        table.insert(fpsLog, math.random(50, 61))
-        if #fpsLog > 100 then table.remove(fpsLog, 1) end
-        task.wait(0.5)
-    end
-end)
-
-local perfMonitor = {}
-function perfMonitor:LogMemory()
-    return math.random(1e7, 5e7)
-end
-function perfMonitor:LogCPU()
-    return math.random()
-end
-
-math.randomseed(os.time())
-for _ = 1, math.random(1, 5) do math.random() end
-
-local function noop(...) return ... end
-
-local analyticsCollector = {}
-function analyticsCollector:SendEvent(event)
-    return math.random()
-end
-
--- Core: Hook tick to stall anti-cheat
-local function hookTick()
-    local orig_tick
-    orig_tick = hookfunction(getrenv().tick, function(...)
-        if not checkcaller() and is_suspicious_script() then
-            return coroutine.yield()
-        end
-        return orig_tick(...)
-    end)
-end
-hookTick()
-
--- Core: Hook gcinfo to spoof memory check
-local function hookGCInfo()
-    local orig_gcinfo
-    orig_gcinfo = hookfunction(gcinfo, function(...)
-        if is_suspicious_script() then
-            return orig_gcinfo(...) + math.random(500, 10000)
-        end
-        return orig_gcinfo(...)
-    end)
-end
-hookGCInfo()
-
--- Core: Disable ScriptContext error listeners
-local function disableScriptErrorListeners()
-    local ScriptContext = cloneref(game:GetService("ScriptContext"))
+-- 1. Disable error listeners (works on most anti-cheats)
+pcall(function()
+    local ScriptContext = game:GetService("ScriptContext")
     for _, conn in ipairs(getconnections(ScriptContext.Error)) do
-        pcall(function() conn:Disable() end)
-    end
-end
-disableScriptErrorListeners()
-
--- Core: Property spoofing for WalkSpeed and CanCollide
-local function setupPropertySpoofing()
-    task.spawn(function()
-        local Players = cloneref(game:GetService("Players"))
-        local Data = {}
-
-        local lp = Players.LocalPlayer
-        if not lp.Character then
-            lp.CharacterAdded:Wait()
-            task.wait(1)
-        end
-
-        for _, part in ipairs(lp.Character:GetDescendants()) do
-            pcall(function()
-                Data[tostring(part)] = part.CanCollide
-            end)
-        end
-
-        local orig_index
-        orig_index = hookmetamethod(game, "__index", function(self, idx)
-            if checkcaller() then
-                return orig_index(self, idx)
-            end
-            if tostring(self) == "Humanoid" and idx == "WalkSpeed" then
-                return 10
-            end
-            if Data[tostring(self)] ~= nil and idx == "CanCollide" then
-                return Data[tostring(self)]
-            end
-            return orig_index(self, idx)
-        end)
-    end)
-end
-setupPropertySpoofing()
-
--- Extra Decoy: Network monitor stub
-local function fakeNetworkMonitor()
-    for i = 1, 10 do
-        task.wait(math.random())
-        noop("Network packet " .. tostring(math.random(10000,99999)))
-    end
-end
-fakeNetworkMonitor()
-
--- Extra Decoy: Periodic analytics
-task.spawn(function()
-    while true do
-        analyticsCollector:SendEvent(tostring(math.random(100000,999999)))
-        task.wait(math.random(5, 15))
+        conn:Disable()
     end
 end)
 
--- Extra Decoy: Fake cleanup
-local function fakeCleanup()
-    for i = 1, math.random(1, 10) do
-        noop("Cleanup_" .. tostring(i))
+-- 2. Disable "Touched" events on character parts
+local function disconnectTouched(char)
+    for _, v in ipairs(char:GetDescendants()) do
+        if v:IsA("BasePart") then
+            for _, conn in ipairs(getconnections(v.Touched)) do
+                conn:Disable()
+            end
+        end
     end
 end
-fakeCleanup()
+if LocalPlayer.Character then disconnectTouched(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(disconnectTouched)
 
-getgenv().AntiCheatBypass = true
-repeat task.wait() until getgenv().AntiCheatBypass == true
-print("Anti-Cheat Bypass loaded. Uptime:", _scriptUptime, "s | Mem:", perfMonitor:LogMemory(), "FPS:", fpsLog[#fpsLog] or 0)
+-- 3. Disable anti-cheat RemoteEvents/RemoteFunctions (basic, works on most games with open ReplicatedStorage)
+pcall(function()
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            if string.find(obj.Name:lower(), "anticheat") or string.find(obj.Name:lower(), "ac") then
+                obj:Destroy()
+            end
+        end
+    end
+end)
 
--- =========================
--- ====== UI SECTION =======
--- =========================
+-- 4. Spoof WalkSpeed/JumpPower (no hookfunction, just constantly set values)
+local spoofedWalkSpeed, spoofedJumpPower = 16, 50
+RunService.Heartbeat:Connect(function()
+    local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if h then
+        if h.WalkSpeed ~= spoofedWalkSpeed then h.WalkSpeed = spoofedWalkSpeed end
+        if h.JumpPower ~= spoofedJumpPower then h.JumpPower = spoofedJumpPower end
+    end
+end)
 
--- Robust Rayfield loader (extra safe)
+-- 5. Anti-AFK
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- ===========================
+--         RAYFIELD UI LOADER (KRNL/Delta Safe)
+-- ===========================
 local function safeLoad(url)
     local success, lib = pcall(function()
         return loadstring(game:HttpGet(url))()
@@ -177,13 +80,16 @@ local function safeLoad(url)
     return nil
 end
 
-local Rayfield = safeLoad("https://raw.githubusercontent.com/shlexware/Rayfield/main/source") or safeLoad("https://sirius.menu/rayfield")
+local Rayfield = safeLoad("https://raw.githubusercontent.com/shlexware/Rayfield/main/source")
+    or safeLoad("https://sirius.menu/rayfield")
 if not Rayfield then
     LocalPlayer:Kick("Failed to load UI library.")
     return
 end
 
--- Key System
+-- ===========================
+--         KEY SYSTEM
+-- ===========================
 local function CheckKey()
     local verified = false
     local win = Rayfield:CreateWindow({
@@ -211,13 +117,9 @@ local function CheckKey()
 end
 CheckKey()
 
--- Anti-AFK
-LocalPlayer.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-end)
-
--- Main UI
+-- ===========================
+--         MAIN UI & FEATURES
+-- ===========================
 local Window = Rayfield:CreateWindow({
     Name = "Ultimate Client Admin Panel",
     LoadingTitle = "Initializing...",
@@ -241,8 +143,6 @@ local FlySpeed = 100
 local InfiniteJump = false
 local NoClip = false
 local TPToPlayerName = ""
-local ESPEnabled = false
-local ESPBoxes = {}
 local AimbotEnabled = false
 
 -- Helper
@@ -250,39 +150,23 @@ local function GetHumanoid()
     return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
 end
 
-local function ClearESP()
-    for _, box in pairs(ESPBoxes) do
-        if box.Remove then
-            box:Remove()
-        end
-    end
-    ESPBoxes = {}
-end
-
--- WalkSpeed & JumpPower
+-- WalkSpeed/JumpPower (Bypass: just set every Heartbeat)
 PlayerTab:CreateSlider({
     Name = "WalkSpeed",
     Range = {16, 500},
     Increment = 1,
     CurrentValue = 16,
     Callback = function(val)
-        local h = GetHumanoid()
-        if h then
-            h.WalkSpeed = val
-        end
+        spoofedWalkSpeed = val
     end
 })
-
 PlayerTab:CreateSlider({
     Name = "JumpPower",
     Range = {50, 300},
     Increment = 1,
     CurrentValue = 50,
     Callback = function(val)
-        local h = GetHumanoid()
-        if h then
-            h.JumpPower = val
-        end
+        spoofedJumpPower = val
     end
 })
 
@@ -300,49 +184,29 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
--- Fly
-local flyConnection
+-- Fly (no BodyGyro/BodyVelocity hook, just simple CFrame manipulation)
+local flyConn
 PlayerTab:CreateToggle({
     Name = "Fly",
     CurrentValue = false,
     Callback = function(state)
         FlyEnabled = state
-        if state then
-            local hrp = LocalPlayer.Character:WaitForChild("HumanoidRootPart")
-            local bv = Instance.new("BodyVelocity", hrp)
-            local bg = Instance.new("BodyGyro", hrp)
-            bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-            bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-
-            flyConnection = RunService.Heartbeat:Connect(function()
-                if not FlyEnabled then
-                    bv:Destroy()
-                    bg:Destroy()
-                    if flyConnection then
-                        flyConnection:Disconnect()
-                    end
-                    return
-                end
-                local move = Vector3.zero
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                    move = move + Camera.CFrame.LookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                    move = move - Camera.CFrame.LookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                    move = move - Camera.CFrame.RightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                    move = move + Camera.CFrame.RightVector
-                end
-                bv.Velocity = move * FlySpeed
-                bg.CFrame = Camera.CFrame
+        if state and LocalPlayer.Character then
+            local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            flyConn = RunService.Heartbeat:Connect(function()
+                if not FlyEnabled or not hrp then return end
+                local move = Vector3.new()
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - Camera.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Camera.CFrame.RightVector end
+                hrp.Velocity = move * (FlySpeed/5)
             end)
+        elseif flyConn then
+            flyConn:Disconnect()
         end
     end
 })
-
 PlayerTab:CreateSlider({
     Name = "Fly Speed",
     Range = {50, 300},
@@ -353,26 +217,29 @@ PlayerTab:CreateSlider({
     end
 })
 
--- NoClip
-local noClipConnection
+-- NoClip (set CanCollide = false)
+local noClipConn
 PlayerTab:CreateToggle({
     Name = "Noclip",
     CurrentValue = false,
     Callback = function(state)
         NoClip = state
-    end
-})
-noClipConnection = RunService.Stepped:Connect(function()
-    if NoClip and LocalPlayer.Character then
-        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
+        if state and not noClipConn then
+            noClipConn = RunService.Stepped:Connect(function()
+                if LocalPlayer.Character then
+                    for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then part.CanCollide = false end
+                    end
+                end
+            end)
+        elseif noClipConn then
+            noClipConn:Disconnect()
+            noClipConn = nil
         end
     end
-end)
+})
 
--- Teleport to Position (CFrame)
+-- Teleport to CFrame
 PlayerTab:CreateInput({
     Name = "Teleport to CFrame",
     PlaceholderText = "x,y,z",
@@ -395,7 +262,6 @@ PlayerTab:CreateInput({
     Name = "Teleport to Player",
     PlaceholderText = "Enter player name",
     Callback = function(name)
-        TPToPlayerName = name
         local target = Players:FindFirstChild(name)
         if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
             local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -405,42 +271,6 @@ PlayerTab:CreateInput({
         end
     end
 })
-
--- ESP
-VisualTab:CreateToggle({
-    Name = "Enable ESP",
-    CurrentValue = false,
-    Callback = function(state)
-        ESPEnabled = state
-        if not state then
-            ClearESP()
-        end
-    end
-})
-RunService.RenderStepped:Connect(function()
-    if ESPEnabled then
-        ClearESP()
-        for _, plr in pairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                local head = plr.Character:FindFirstChild("Head")
-                if head then
-                    local pos, onScreen = Camera:WorldToViewportPoint(head.Position)
-                    if onScreen then
-                        local box = Drawing.new("Text")
-                        box.Text = plr.Name
-                        box.Size = 18
-                        box.Center = true
-                        box.Outline = true
-                        box.Color = Color3.new(1, 0, 0)
-                        box.Position = Vector2.new(pos.X, pos.Y - 30)
-                        box.Visible = true
-                        table.insert(ESPBoxes, box)
-                    end
-                end
-            end
-        end
-    end
-end)
 
 -- Fullbright
 VisualTab:CreateButton({
@@ -465,56 +295,6 @@ VisualTab:CreateButton({
     end
 })
 
--- FOV Circle
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Radius = 100
-FOVCircle.Thickness = 1
-FOVCircle.NumSides = 64
-FOVCircle.Transparency = 1
-FOVCircle.Filled = false
-FOVCircle.Visible = true
-FOVCircle.Color = Color3.fromRGB(0, 255, 0)
-RunService.RenderStepped:Connect(function()
-    local mousePos = UserInputService:GetMouseLocation()
-    FOVCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
-end)
-
--- Aimbot
-CombatTab:CreateToggle({
-    Name = "Enable Aimbot",
-    CurrentValue = false,
-    Callback = function(val)
-        AimbotEnabled = val
-    end
-})
-local function updateAimbot()
-    if not AimbotEnabled then
-        return
-    end
-    local closest, shortest = nil, math.huge
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character then
-            local head = plr.Character:FindFirstChild("Head")
-            if head then
-                local pos, onScreen = Camera:WorldToViewportPoint(head.Position)
-                if onScreen then
-                    local dist = (Vector2.new(pos.X, pos.Y) - UserInputService:GetMouseLocation()).Magnitude
-                    if dist < shortest and dist < FOVCircle.Radius then
-                        closest, shortest = plr, dist
-                    end
-                end
-            end
-        end
-    end
-    if closest and closest.Character then
-        local head = closest.Character:FindFirstChild("Head")
-        if head then
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position)
-        end
-    end
-end
-RunService:BindToRenderStep("Aimbot", Enum.RenderPriority.Camera.Value, updateAimbot)
-
 -- Tool Giver
 UtilityTab:CreateInput({
     Name = "Tool Giver (Asset ID or Backpack Name)",
@@ -534,13 +314,14 @@ UtilityTab:CreateInput({
     end
 })
 
--- Click Teleport
+-- Click Teleport (safe version)
+local clickTeleportConn
 UtilityTab:CreateToggle({
     Name = "Click Teleport",
     CurrentValue = false,
     Callback = function(state)
-        if state then
-            Mouse.Button1Down:Connect(function()
+        if state and not clickTeleportConn then
+            clickTeleportConn = Mouse.Button1Down:Connect(function()
                 local target = Mouse.Hit
                 if LocalPlayer.Character then
                     local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -549,6 +330,9 @@ UtilityTab:CreateToggle({
                     end
                 end
             end)
+        elseif clickTeleportConn then
+            clickTeleportConn:Disconnect()
+            clickTeleportConn = nil
         end
     end
 })
@@ -581,20 +365,23 @@ ExecutorTab:CreateInput({
 })
 
 -- Rainbow Character
+local rainbowConn
 FunTab:CreateToggle({
     Name = "Rainbow Character",
     CurrentValue = false,
     Callback = function(state)
-        task.spawn(function()
-            while state do
+        if state and not rainbowConn then
+            rainbowConn = RunService.Heartbeat:Connect(function()
                 for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
                     if part:IsA("BasePart") then
                         part.Color = Color3.fromHSV(tick() % 5 / 5, 1, 1)
                     end
                 end
-                task.wait(0.1)
-            end
-        end)
+            end)
+        elseif rainbowConn then
+            rainbowConn:Disconnect()
+            rainbowConn = nil
+        end
     end
 })
 
@@ -618,8 +405,8 @@ FunTab:CreateInput({
     Name = "Fake Chat",
     PlaceholderText = "Your message...",
     Callback = function(msg)
-        local chatEvent = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
-        if chatEvent then
+        local chatEvent = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+        if chatEvent and chatEvent:FindFirstChild("SayMessageRequest") then
             chatEvent.SayMessageRequest:FireServer(msg, "All")
         else
             StarterGui:SetCore("ChatMakeSystemMessage", {
@@ -669,3 +456,5 @@ UtilityTab:CreateButton({
         })
     end
 })
+
+-- ======= END =======
