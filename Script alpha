@@ -1,0 +1,670 @@
+--[[ 
+    Ultimate Roblox Admin Panel + Advanced Anti-Cheat Bypass
+    For KRNL/Delta and similar executors
+    WARNING: For educational purposes only.
+--]]
+
+----------------------------
+-- ADVANCED ANTI-CHEAT BYPASS
+----------------------------
+
+-- Utility function for safe hookfunction
+local function safeHook(target, replacement)
+    local ok, old = pcall(function()
+        return hookfunction(target, replacement)
+    end)
+    return ok and old or nil
+end
+
+-- Hook Kick and Destroy on LocalPlayer to prevent force kicks
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+safeHook(LocalPlayer.Kick, function(self, ...)
+    warn("[AntiCheatBypass] Kick attempt blocked:", ...)
+    return
+end)
+
+safeHook(LocalPlayer.Destroy, function(self, ...)
+    warn("[AntiCheatBypass] Destroy attempt blocked.")
+    return
+end)
+
+-- Hook FireServer/InvokeServer on suspicious Remotes
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local suspiciousRemoteNames = {"anticheat", "ac", "ban", "kick", "log", "punish"}
+for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+    if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+        local name = obj.Name:lower()
+        for _, sus in ipairs(suspiciousRemoteNames) do
+            if name:find(sus) then
+                if obj:IsA("RemoteEvent") then
+                    safeHook(obj.FireServer, function(self, ...)
+                        warn("[AntiCheatBypass] Blocked suspicious FireServer to", self.Name)
+                        return
+                    end)
+                elseif obj:IsA("RemoteFunction") then
+                    safeHook(obj.InvokeServer, function(self, ...)
+                        warn("[AntiCheatBypass] Blocked suspicious InvokeServer to", self.Name)
+                        return
+                    end)
+                end
+            end
+        end
+    end
+end
+
+-- Property spoofing (advanced, covers more Humanoid props)
+local spoofedProps = {
+    WalkSpeed = 16,
+    JumpPower = 50,
+    Health = 100,
+    MaxHealth = 100,
+    HipHeight = 2
+}
+local meta = getrawmetatable(game)
+local oldIndex = meta.__index
+setreadonly(meta, false)
+meta.__index = function(self, key)
+    if tostring(self) == "Humanoid" and spoofedProps[key] ~= nil and not checkcaller() then
+        return spoofedProps[key]
+    end
+    return oldIndex(self, key)
+end
+setreadonly(meta, true)
+
+-- Disable ScriptContext error signals and Touched events
+pcall(function()
+    for _, v in ipairs(getconnections(game:GetService("ScriptContext").Error)) do
+        v:Disable()
+    end
+end)
+local function disconnectTouched(char)
+    for _, v in ipairs(char:GetDescendants()) do
+        if v:IsA("BasePart") then
+            for _, conn in ipairs(getconnections(v.Touched)) do
+                conn:Disable()
+            end
+        end
+    end
+end
+if LocalPlayer.Character then disconnectTouched(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(disconnectTouched)
+
+-- Prevent forced respawn by anti-cheat
+safeHook(Players.Respawn, function(self, ...)
+    warn("[AntiCheatBypass] Forced respawn blocked.")
+    return
+end)
+
+-- Anti-AFK
+local VirtualUser = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+print("[AntiCheatBypass] Advanced Anti-Cheat Bypass Loaded.")
+
+----------------------------
+-- RAYFIELD UI LOADER
+----------------------------
+local function safeLoad(url)
+    local success, lib = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+    if success and type(lib) == "table" and lib.CreateWindow then
+        return lib
+    end
+    return nil
+end
+
+local Rayfield = safeLoad("https://raw.githubusercontent.com/shlexware/Rayfield/main/source")
+    or safeLoad("https://sirius.menu/rayfield")
+if not Rayfield then
+    LocalPlayer:Kick("Failed to load UI library.")
+    return
+end
+
+----------------------------
+-- KEY SYSTEM
+----------------------------
+local function CheckKey()
+    local verified = false
+    local win = Rayfield:CreateWindow({
+        Name = "Key Verification",
+        LoadingTitle = "Client Admin Panel",
+        LoadingSubtitle = "Enter your key",
+        ConfigurationSaving = { Enabled = false },
+        Discord = { Enabled = false },
+        KeySystem = false
+    })
+    local tab = win:CreateTab("Key")
+    tab:CreateInput({
+        Name = "Enter Key",
+        PlaceholderText = "Enter 'Test'",
+        Callback = function(key)
+            if key == "Test" then
+                verified = true
+                win:Destroy()
+            else
+                Rayfield:Notify({ Title = "Invalid", Content = "Incorrect key. Try again." })
+            end
+        end
+    })
+    repeat task.wait() until verified
+end
+CheckKey()
+
+----------------------------
+-- MAIN UI & FEATURES
+----------------------------
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
+local Mouse = LocalPlayer:GetMouse()
+local Camera = Workspace.CurrentCamera
+
+local Window = Rayfield:CreateWindow({
+    Name = "Ultimate Client Admin Panel",
+    LoadingTitle = "Initializing...",
+    LoadingSubtitle = "Client-Sided",
+    ConfigurationSaving = { Enabled = false },
+    Discord = { Enabled = false },
+    KeySystem = false
+})
+
+-- Tabs
+local PlayerTab = Window:CreateTab("Player")
+local VisualTab = Window:CreateTab("Visuals")
+local CombatTab = Window:CreateTab("Combat")
+local UtilityTab = Window:CreateTab("Utilities")
+local FunTab = Window:CreateTab("Fun")
+local ExecutorTab = Window:CreateTab("Executor")
+
+-- Variables
+local FlyEnabled = false
+local FlySpeed = 100
+local InfiniteJump = false
+local NoClip = false
+local flyBodyGyro, flyBodyVel, flyConn = nil, nil, nil
+local spoofedWalkSpeed, spoofedJumpPower = 16, 50
+
+----------------------------
+-- PLAYER TAB
+----------------------------
+
+PlayerTab:CreateSlider({
+    Name = "WalkSpeed",
+    Range = {16, 500},
+    Increment = 1,
+    CurrentValue = 16,
+    Callback = function(val)
+        spoofedWalkSpeed = val
+        spoofedProps.WalkSpeed = val
+    end
+})
+PlayerTab:CreateSlider({
+    Name = "JumpPower",
+    Range = {50, 300},
+    Increment = 1,
+    CurrentValue = 50,
+    Callback = function(val)
+        spoofedJumpPower = val
+        spoofedProps.JumpPower = val
+    end
+})
+
+-- Infinite Jump
+PlayerTab:CreateToggle({
+    Name = "Infinite Jump",
+    CurrentValue = false,
+    Callback = function(state)
+        InfiniteJump = state
+    end
+})
+UserInputService.JumpRequest:Connect(function()
+    if InfiniteJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid") then
+        LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid"):ChangeState("Jumping")
+    end
+end)
+
+-- Reliable Fly (BodyGyro + BodyVelocity)
+PlayerTab:CreateToggle({
+    Name = "Fly (fixed)",
+    CurrentValue = false,
+    Callback = function(state)
+        FlyEnabled = state
+        local char = LocalPlayer.Character
+        if FlyEnabled and char and char:FindFirstChild("HumanoidRootPart") then
+            local hrp = char.HumanoidRootPart
+            -- Clean up old
+            if flyBodyGyro then flyBodyGyro:Destroy() end
+            if flyBodyVel then flyBodyVel:Destroy() end
+            flyBodyGyro = Instance.new("BodyGyro")
+            flyBodyGyro.P = 9e4
+            flyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            flyBodyGyro.CFrame = hrp.CFrame
+            flyBodyGyro.Parent = hrp
+
+            flyBodyVel = Instance.new("BodyVelocity")
+            flyBodyVel.Velocity = Vector3.new(0,0,0)
+            flyBodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+            flyBodyVel.Parent = hrp
+
+            flyConn = RunService.RenderStepped:Connect(function()
+                if not FlyEnabled or not hrp or not hrp.Parent then return end
+                flyBodyGyro.CFrame = Camera.CFrame
+                local move = Vector3.new()
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - Camera.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Camera.CFrame.RightVector end
+                flyBodyVel.Velocity = move.Unit * FlySpeed or Vector3.new() -- smooth move
+            end)
+        else
+            if flyConn then flyConn:Disconnect() flyConn = nil end
+            if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
+            if flyBodyVel then flyBodyVel:Destroy() flyBodyVel = nil end
+        end
+    end
+})
+PlayerTab:CreateSlider({
+    Name = "Fly Speed",
+    Range = {50, 300},
+    Increment = 10,
+    CurrentValue = FlySpeed,
+    Callback = function(val)
+        FlySpeed = val
+    end
+})
+
+-- NoClip (set CanCollide = false)
+local noClipConn
+PlayerTab:CreateToggle({
+    Name = "Noclip",
+    CurrentValue = false,
+    Callback = function(state)
+        NoClip = state
+        if state and not noClipConn then
+            noClipConn = RunService.Stepped:Connect(function()
+                if LocalPlayer.Character then
+                    for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then part.CanCollide = false end
+                    end
+                end
+            end)
+        elseif noClipConn then
+            noClipConn:Disconnect()
+            noClipConn = nil
+        end
+    end
+})
+
+-- Teleport to CFrame
+PlayerTab:CreateInput({
+    Name = "Teleport to CFrame",
+    PlaceholderText = "x,y,z",
+    Callback = function(input)
+        local parts = string.split(input, ",")
+        if #parts == 3 then
+            local x, y, z = tonumber(parts[1]), tonumber(parts[2]), tonumber(parts[3])
+            if x and y and z then
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.CFrame = CFrame.new(x, y, z)
+                end
+            end
+        end
+    end
+})
+
+-- Teleport to Player
+PlayerTab:CreateInput({
+    Name = "Teleport to Player",
+    PlaceholderText = "Enter player name",
+    Callback = function(name)
+        local target = Players:FindFirstChild(name)
+        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+            end
+        end
+    end
+})
+
+----------------------------
+-- VISUAL TAB
+----------------------------
+
+VisualTab:CreateButton({
+    Name = "Enable Fullbright",
+    Callback = function()
+        Lighting.Ambient = Color3.new(1, 1, 1)
+        Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+        Lighting.Brightness = 5
+    end
+})
+
+VisualTab:CreateButton({
+    Name = "Enable X-Ray (local)",
+    Callback = function()
+        for _, part in ipairs(Workspace:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Transparency = 0.5
+                part.Material = Enum.Material.ForceField
+            end
+        end
+    end
+})
+
+----------------------------
+-- COMBAT TAB
+----------------------------
+
+-- Kill Aura
+local killAuraConn
+local killAuraEnabled = false
+CombatTab:CreateToggle({
+    Name = "Kill Aura (attack nearby players)",
+    CurrentValue = false,
+    Callback = function(state)
+        killAuraEnabled = state
+        if state and not killAuraConn then
+            killAuraConn = RunService.Heartbeat:Connect(function()
+                local myChar = LocalPlayer.Character
+                if not myChar then return end
+                local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+                if not myHRP then return end
+                for _, plr in pairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChildWhichIsA("Humanoid") and plr.Character:FindFirstChildWhichIsA("Humanoid").Health > 0 then
+                        local dist = (plr.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
+                        if dist < 15 then -- range
+                            -- "Punch" by touching or damaging
+                            firetouchinterest(myHRP, plr.Character.HumanoidRootPart, 0)
+                            firetouchinterest(myHRP, plr.Character.HumanoidRootPart, 1)
+                        end
+                    end
+                end
+            end)
+        elseif killAuraConn then
+            killAuraConn:Disconnect()
+            killAuraConn = nil
+        end
+    end
+})
+
+-- Reach (fake touch with distant players)
+local reachConn
+local reachEnabled = false
+CombatTab:CreateToggle({
+    Name = "Reach (extended melee)",
+    CurrentValue = false,
+    Callback = function(state)
+        reachEnabled = state
+        if state and not reachConn then
+            reachConn = RunService.Heartbeat:Connect(function()
+                local myChar = LocalPlayer.Character
+                if not myChar then return end
+                local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+                if not myHRP then return end
+                for _, plr in pairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChildWhichIsA("Humanoid") and plr.Character:FindFirstChildWhichIsA("Humanoid").Health > 0 then
+                        local dist = (plr.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
+                        if dist < 35 then -- extended range
+                            firetouchinterest(myHRP, plr.Character.HumanoidRootPart, 0)
+                            firetouchinterest(myHRP, plr.Character.HumanoidRootPart, 1)
+                        end
+                    end
+                end
+            end)
+        elseif reachConn then
+            reachConn:Disconnect()
+            reachConn = nil
+        end
+    end
+})
+
+-- Aimbot (nearest head lock)
+local aimbotConn
+local aimbotEnabled = false
+CombatTab:CreateToggle({
+    Name = "Aimbot (nearest player head)",
+    CurrentValue = false,
+    Callback = function(state)
+        aimbotEnabled = state
+        if state and not aimbotConn then
+            aimbotConn = RunService.RenderStepped:Connect(function()
+                local myChar = LocalPlayer.Character
+                if not myChar then return end
+                local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+                if not myHRP then return end
+                local nearest, dist = nil, math.huge
+                for _, plr in pairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") and plr.Character:FindFirstChildWhichIsA("Humanoid") and plr.Character:FindFirstChildWhichIsA("Humanoid").Health > 0 then
+                        local d = (plr.Character.Head.Position - Camera.CFrame.Position).Magnitude
+                        if d < dist then
+                            dist = d
+                            nearest = plr.Character.Head
+                        end
+                    end
+                end
+                if nearest then
+                    Camera.CFrame = CFrame.new(Camera.CFrame.Position, nearest.Position)
+                end
+            end)
+        elseif aimbotConn then
+            aimbotConn:Disconnect()
+            aimbotConn = nil
+        end
+    end
+})
+
+-- Auto Parry (for games with block/parry, you must set your block key)
+local autoParryConn
+local autoParryEnabled = false
+CombatTab:CreateToggle({
+    Name = "Auto Parry (block attacks, Q key)",
+    CurrentValue = false,
+    Callback = function(state)
+        autoParryEnabled = state
+        if state and not autoParryConn then
+            autoParryConn = RunService.Heartbeat:Connect(function()
+                -- This is a generic example, actual block/parry depends on the game.
+                -- You may need to customize this for your game.
+                -- Here, we just simulate pressing Q if an enemy is very close
+                local myChar = LocalPlayer.Character
+                if not myChar then return end
+                local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+                if not myHRP then return end
+                for _, plr in pairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChildWhichIsA("Humanoid") and plr.Character:FindFirstChildWhichIsA("Humanoid").Health > 0 then
+                        local dist = (plr.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
+                        if dist < 8 then -- block range
+                            keypress(Enum.KeyCode.Q)
+                            wait(0.05)
+                            keyrelease(Enum.KeyCode.Q)
+                        end
+                    end
+                end
+            end)
+        elseif autoParryConn then
+            autoParryConn:Disconnect()
+            autoParryConn = nil
+        end
+    end
+})
+
+----------------------------
+-- UTILITY TAB
+----------------------------
+
+UtilityTab:CreateInput({
+    Name = "Tool Giver (Asset ID or Backpack Name)",
+    PlaceholderText = "123456789 or ToolName",
+    Callback = function(toolText)
+        if tonumber(toolText) then
+            local tool = game:GetObjects("rbxassetid://" .. toolText)[1]
+            if tool and tool:IsA("Tool") then
+                tool.Parent = LocalPlayer.Backpack
+            end
+        else
+            local tool = LocalPlayer.Backpack:FindFirstChild(toolText)
+            if tool then
+                tool.Parent = LocalPlayer.Character
+            end
+        end
+    end
+})
+
+-- Click Teleport (safe version)
+local clickTeleportConn
+UtilityTab:CreateToggle({
+    Name = "Click Teleport",
+    CurrentValue = false,
+    Callback = function(state)
+        if state and not clickTeleportConn then
+            clickTeleportConn = Mouse.Button1Down:Connect(function()
+                local target = Mouse.Hit
+                if LocalPlayer.Character then
+                    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        hrp.CFrame = target + Vector3.new(0, 3, 0)
+                    end
+                end
+            end)
+        elseif clickTeleportConn then
+            clickTeleportConn:Disconnect()
+            clickTeleportConn = nil
+        end
+    end
+})
+
+-- UI Toggle Keybind
+UtilityTab:CreateKeybind({
+    Name = "Toggle GUI",
+    CurrentKeybind = "RightControl",
+    HoldToInteract = false,
+    Callback = function()
+        Rayfield:ToggleUI()
+    end
+})
+
+-- Clean Up Option
+UtilityTab:CreateButton({
+    Name = "Unload All",
+    Callback = function()
+        Rayfield:Destroy()
+        StarterGui:SetCore("ChatMakeSystemMessage", {
+            Text = "[Admin Panel] Unloaded.",
+            Color = Color3.fromRGB(255, 50, 50),
+            Font = Enum.Font.SourceSansBold,
+            FontSize = Enum.FontSize.Size24
+        })
+    end
+})
+
+----------------------------
+-- FUN TAB
+----------------------------
+
+local rainbowConn
+FunTab:CreateToggle({
+    Name = "Rainbow Character",
+    CurrentValue = false,
+    Callback = function(state)
+        if state and not rainbowConn then
+            rainbowConn = RunService.Heartbeat:Connect(function()
+                for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.Color = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+                    end
+                end
+            end)
+        elseif rainbowConn then
+            rainbowConn:Disconnect()
+            rainbowConn = nil
+        end
+    end
+})
+
+FunTab:CreateInput({
+    Name = "Play Sound (ID)",
+    PlaceholderText = "Enter Sound ID",
+    Callback = function(id)
+        local sound = Instance.new("Sound", Camera)
+        sound.SoundId = "rbxassetid://" .. id
+        sound.Volume = 5
+        sound:Play()
+        sound.Ended:Connect(function()
+            sound:Destroy()
+        end)
+    end
+})
+
+FunTab:CreateInput({
+    Name = "Fake Chat",
+    PlaceholderText = "Your message...",
+    Callback = function(msg)
+        local chatEvent = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+        if chatEvent and chatEvent:FindFirstChild("SayMessageRequest") then
+            chatEvent.SayMessageRequest:FireServer(msg, "All")
+        else
+            StarterGui:SetCore("ChatMakeSystemMessage", {
+                Text = msg,
+                Color = Color3.fromRGB(0, 255, 0),
+                Font = Enum.Font.SourceSansBold,
+                FontSize = Enum.FontSize.Size24
+            })
+        end
+    end
+})
+
+FunTab:CreateInput({
+    Name = "Fake System Message",
+    PlaceholderText = "Your system notice...",
+    Callback = function(text)
+        StarterGui:SetCore("ChatMakeSystemMessage", {
+            Text = "[SYSTEM] " .. text,
+            Color = Color3.fromRGB(255, 200, 0),
+            Font = Enum.Font.SourceSansBold,
+            FontSize = Enum.FontSize.Size24
+        })
+    end
+})
+
+----------------------------
+-- EXECUTOR TAB
+----------------------------
+
+ExecutorTab:CreateInput({
+    Name = "Execute Lua Code",
+    PlaceholderText = "loadstring(...)()",
+    Callback = function(code)
+        local success, err = pcall(function()
+            loadstring(code)()
+        end)
+        if not success then
+            Rayfield:Notify({ Title = "Error", Content = tostring(err) })
+        end
+    end
+})
+ExecutorTab:CreateInput({
+    Name = "Load Script from URL",
+    PlaceholderText = "Pastebin raw URL",
+    Callback = function(url)
+        local success, result = pcall(function()
+            local script = game:HttpGet(url)
+            loadstring(script)()
+        end)
+        if not success then
+            Rayfield:Notify({ Title = "Error", Content = "Failed to load script." })
+        end
+    end
+})
+
+print("[Combined Bypass & Admin Panel] Enhanced version loaded.")
+
+-- End of script
