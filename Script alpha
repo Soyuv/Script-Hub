@@ -1,7 +1,9 @@
---[[ 
+--[[
     Ultimate Roblox Admin Panel + Advanced Anti-Cheat Bypass
     For KRNL/Delta and similar executors
     WARNING: For educational purposes only.
+    Current Date and Time (UTC): 2025-06-15 12:34:49
+    Current User's Login: Soyuv
 --]]
 
 ----------------------------
@@ -20,11 +22,13 @@ end
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
+-- Prevent LocalPlayer.Kick from being called
 safeHook(LocalPlayer.Kick, function(self, ...)
     warn("[AntiCheatBypass] Kick attempt blocked:", ...)
     return
 end)
 
+-- Prevent LocalPlayer from being destroyed
 safeHook(LocalPlayer.Destroy, function(self, ...)
     warn("[AntiCheatBypass] Destroy attempt blocked.")
     return
@@ -111,11 +115,14 @@ print("[AntiCheatBypass] Advanced Anti-Cheat Bypass Loaded.")
 ----------------------------
 local function safeLoad(url)
     local success, lib = pcall(function()
-        return loadstring(game:HttpGet(url))()
+        local response = game:HttpGet(url)
+        if success and response and #response > 0 then
+            local lib = loadstring(response)()
+            if type(lib) == "table" and lib.CreateWindow then
+                return lib
+            end
+        end
     end)
-    if success and type(lib) == "table" and lib.CreateWindow then
-        return lib
-    end
     return nil
 end
 
@@ -666,5 +673,3 @@ ExecutorTab:CreateInput({
 })
 
 print("[Combined Bypass & Admin Panel] Enhanced version loaded.")
-
--- End of script
